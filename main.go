@@ -5,13 +5,11 @@ import (
     "log"
     "net"
     "os"
-    "io"
 )
 
 func main() {
-    // CHEAP way to get all the args in
     if len(os.Args) != 5 {
-        fmt.Println("Usage: ./forwarder <source-interface-ip-addr> <source-port> <destination-interface-ip-addr> <destination-port>")
+        fmt.Println("Usage: ./forwarder <source-interface> <source-port> <destination-interface> <destination-port>")
         os.Exit(1)
     }
 
@@ -23,46 +21,37 @@ func main() {
     sourceAddr := fmt.Sprintf("%s:%s", sourceInterface, sourcePort)
     destAddr := fmt.Sprintf("%s:%s", destInterface, destPort)
 
-    sourceListener, err := net.Listen("tcp", sourceAddr)
+    sourceConn, err := net.ListenPacket("udp", sourceAddr)
     if err != nil {
         log.Fatal(err)
     }
-    defer sourceListener.Close()
+    defer sourceConn.Close()
 
     log.Printf("Listening on %s...\n", sourceAddr)
 
     for {
-        sourceConn, err := sourceListener.Accept()
+        buf := make([]byte, 1500)
+        n, addr, err := sourceConn.ReadFrom(buf)
         if err != nil {
             log.Fatal(err)
         }
 
-        go forwardConnection(sourceConn, destAddr)
+        go forwardPacket(buf[:n], addr, destAddr)
     }
-
 }
 
-func forwardConnection(sourceConn net.Conn, destAddr string) {
-    destConn, err := net.Dial("tcp", destAddr)
+func forwardPacket(data []byte, sourceAddr net.Addr, destAddr string) {
+    destConn, err := net.Dial("udp", destAddr)
     if err != nil {
         log.Fatal(err)
     }
     defer destConn.Close()
-    
-    log.Printf("Forwarding from %s to %s...\n", sourceConn.RemoteAddr(), destConn.RemoteAddr())
 
-    go func() {
-        _, err := io.Copy(destConn, sourceConn)
-        if err != nil {
-            log.Fatal(err)
-        }
-        log.Printf("Forwarded from %s to %s\n", sourceConn.RemoteAddr(), destConn.RemoteAddr())
-    }()
-
-    _, err = io.Copy(sourceConn, destConn)
+    _, err = destConn.Write(data)
     if err != nil {
         log.Fatal(err)
     }
-    log.Printf("Success! Forwarded from %s to %s\n", destConn.RemoteAddr(), sourceConn.RemoteAddr())
+
+    log.Printf("Forwarded packet from %s to %s\n", sourceAddr, destAddr)
 }
 
