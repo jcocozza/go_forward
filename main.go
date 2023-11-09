@@ -21,7 +21,7 @@ func main() {
     sourceAddr := fmt.Sprintf("%s:%s", sourceInterface, sourcePort)
     destAddr := fmt.Sprintf("%s:%s", destInterface, destPort)
 
-    sourceConn, err := net.ListenPacket("tcp", sourceAddr)
+    sourceConn, err := net.ListenPacket("udp", sourceAddr)
     if err != nil {
         log.Fatal(err)
     }
