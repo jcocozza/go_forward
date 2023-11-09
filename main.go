@@ -1,65 +1,30 @@
 package main
 
 import (
-    "fmt"
-    "log"
-    "net"
+	"fmt"
+	"log"
     "os"
-    "io"
+
+	"github.com/jcocozza/go_foward/tcp"
+	"github.com/jcocozza/go_foward/udp"
 )
 
 func main() {
-    if len(os.Args) != 5 {
-        fmt.Println("Usage: ./port-forwarder <source-addr> <source-port> <destination-addr> <destination-port>")
+    if len(os.Args) != 6 {
+        fmt.Println("Usage: ./port-forwarder <type(tcp-udp)> <source-ip-addr> <source-port> <destination-addr> <destination-port>")
         os.Exit(1)
     }
+    dataType := os.Args[1]
+    sourceInterface := os.Args[2]
+    sourcePort := os.Args[3]
+    destInterface := os.Args[4]
+    destPort := os.Args[5]
 
-    sourceAddr := os.Args[1]
-    sourcePort := os.Args[2]
-    destAddr := os.Args[3]
-    destPort := os.Args[4]
-
-    listener, err := net.Listen("tcp", sourceAddr+":"+sourcePort)
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer listener.Close()
-
-    log.Printf("Listening on %s:%s and forwarding to %s:%s...\n", sourceAddr, sourcePort, destAddr, destPort)
-
-    for {
-        sourceConn, err := listener.Accept()
-        if err != nil {
-            log.Fatal(err)
-        }
-
-        go forwardToDestination(sourceConn, destAddr+":"+destPort)
+    if dataType == "udp" {
+        udp.Udp(sourceInterface, sourcePort, destInterface, destPort)
+    } else if dataType == "tcp" {
+        tcp.Tcp(sourceInterface, sourcePort, destInterface, destPort)
+    } else {
+        log.Fatal("improper data type")
     }
 }
-
-func forwardToDestination(sourceConn net.Conn, destAddr string) {
-    destConn, err := net.Dial("tcp", destAddr)
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer destConn.Close()
-
-    go func() {
-        defer sourceConn.Close()
-
-        _, err := io.Copy(destConn, sourceConn)
-        if err != nil {
-            log.Fatal(err)
-        }
-    }()
-
-    go func() {
-        defer destConn.Close()
-
-        _, err := io.Copy(sourceConn, destConn)
-        if err != nil {
-            log.Fatal(err)
-        }
-    }()
-}
-
