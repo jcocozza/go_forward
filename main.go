@@ -5,53 +5,61 @@ import (
     "log"
     "net"
     "os"
+    "io"
 )
 
 func main() {
     if len(os.Args) != 5 {
-        fmt.Println("Usage: ./forwarder <source-interface> <source-port> <destination-interface> <destination-port>")
+        fmt.Println("Usage: ./port-forwarder <source-addr> <source-port> <destination-addr> <destination-port>")
         os.Exit(1)
     }
 
-    sourceInterface := os.Args[1]
+    sourceAddr := os.Args[1]
     sourcePort := os.Args[2]
-    destInterface := os.Args[3]
+    destAddr := os.Args[3]
     destPort := os.Args[4]
 
-    sourceAddr := fmt.Sprintf("%s:%s", sourceInterface, sourcePort)
-    destAddr := fmt.Sprintf("%s:%s", destInterface, destPort)
-
-    sourceConn, err := net.ListenPacket("udp", sourceAddr)
+    listener, err := net.Listen("tcp", sourceAddr+":"+sourcePort)
     if err != nil {
         log.Fatal(err)
     }
-    defer sourceConn.Close()
+    defer listener.Close()
 
-    log.Printf("Listening on %s...\n", sourceAddr)
+    log.Printf("Listening on %s:%s and forwarding to %s:%s...\n", sourceAddr, sourcePort, destAddr, destPort)
 
     for {
-        buf := make([]byte, 1500)
-        n, addr, err := sourceConn.ReadFrom(buf)
+        sourceConn, err := listener.Accept()
         if err != nil {
             log.Fatal(err)
         }
 
-        go forwardPacket(buf[:n], addr, destAddr)
+        go forwardToDestination(sourceConn, destAddr+":"+destPort)
     }
 }
 
-func forwardPacket(data []byte, sourceAddr net.Addr, destAddr string) {
-    destConn, err := net.Dial("udp", destAddr)
+func forwardToDestination(sourceConn net.Conn, destAddr string) {
+    destConn, err := net.Dial("tcp", destAddr)
     if err != nil {
         log.Fatal(err)
     }
     defer destConn.Close()
 
-    _, err = destConn.Write(data)
-    if err != nil {
-        log.Fatal(err)
-    }
+    go func() {
+        defer sourceConn.Close()
 
-    log.Printf("Forwarded packet from %s to %s\n", sourceAddr, destAddr)
+        _, err := io.Copy(destConn, sourceConn)
+        if err != nil {
+            log.Fatal(err)
+        }
+    }()
+
+    go func() {
+        defer destConn.Close()
+
+        _, err := io.Copy(sourceConn, destConn)
+        if err != nil {
+            log.Fatal(err)
+        }
+    }()
 }
 
